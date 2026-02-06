@@ -3,45 +3,53 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-st.title("Apple Stock Price Forecasting (SARIMA)")
-st.write("30-day stock price forecast")
+st.set_page_config(page_title="Apple Stock Forecast", layout="centered")
 
-# Load dataset
-df = pd.read_excel("Apples_stock price dataset.xlsx")
+st.title("🍎 Apple Stock Price Forecasting (SARIMA)")
+st.write("Generate a 30-day stock price forecast")
 
-# Show columns (for safety)
-st.write("Dataset Columns:", df.columns.tolist())
+@st.cache_resource
+def train_model():
+    df = pd.read_excel("Apples_stock price dataset.xlsx")
 
-# Convert date column (change if needed)
-df['Date'] = pd.to_datetime(df.iloc[:, 0])
-df.set_index('Date', inplace=True)
+    df['Date'] = pd.to_datetime(df.iloc[:, 0])
+    df.set_index('Date', inplace=True)
+    df = df.asfreq('B')
 
-# Target column (last column assumed as stock price)
-ts = df.iloc[:, -1]
+    ts = df.iloc[:, -1]
 
-# Train SARIMA model
-model = SARIMAX(ts, order=(1,1,1), seasonal_order=(1,1,1,12))
-sarima_model = model.fit(disp=False)
-
-if st.button("Generate 30-Day Forecast"):
-    forecast = sarima_model.get_forecast(steps=30)
-    forecast_values = forecast.predicted_mean
-
-    future_dates = pd.bdate_range(
-        start=ts.index[-1],
-        periods=30
+    model = SARIMAX(
+        ts,
+        order=(1,1,1),
+        seasonal_order=(0,1,1,12),  # lighter than before
+        enforce_stationarity=False,
+        enforce_invertibility=False
     )
+    return model.fit(disp=False), ts
 
-    forecast_df = pd.DataFrame({
-        "Date": future_dates,
-        "Predicted Stock Price": forecast_values.values
-    })
 
-    st.subheader("Forecast Data")
-    st.dataframe(forecast_df)
+if st.button("🚀 Generate 30-Day Forecast"):
+    with st.spinner("Training model & generating forecast..."):
+        sarima_model, ts = train_model()
 
-    st.subheader("Forecast Visualization")
-    plt.figure(figsize=(10,4))
-    plt.plot(forecast_df["Date"], forecast_df["Predicted Stock Price"])
-    plt.xticks(rotation=45)
-    st.pyplot(plt)
+        forecast = sarima_model.get_forecast(steps=30)
+        forecast_values = forecast.predicted_mean
+
+        future_dates = pd.bdate_range(
+            start=ts.index[-1],
+            periods=30
+        )
+
+        forecast_df = pd.DataFrame({
+            "Date": future_dates,
+            "Predicted Stock Price": forecast_values.values
+        })
+
+        st.subheader("📊 Forecast Data")
+        st.dataframe(forecast_df)
+
+        st.subheader("📈 Forecast Visualization")
+        plt.figure(figsize=(10,4))
+        plt.plot(forecast_df["Date"], forecast_df["Predicted Stock Price"])
+        plt.xticks(rotation=45)
+        st.pyplot(plt)
