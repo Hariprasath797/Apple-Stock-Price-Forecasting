@@ -4,39 +4,48 @@ import numpy as np
 import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-# Page config
-st.set_page_config(page_title="Apple Stock Price Forecasting", layout="centered")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(
+    page_title="Apple Stock Price Forecasting",
+    layout="centered"
+)
 
-st.title("🍎 Apple Stock Price Forecasting (SARIMA)")
-st.write("30-day Apple stock price forecast using time-series modeling")
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("📌 Project Info")
+st.sidebar.markdown("""
+**Model:** SARIMA  
+**Forecast Horizon:** 30 Business Days  
+**Deployment:** Streamlit Cloud (Free Tier)
 
-# Cache model so it trains only once
+⚠️ Forecasts are indicative and for educational purposes only.
+""")
+
+# ---------------- MAIN TITLE ----------------
+st.title("🍎 Apple Stock Price Forecasting")
+st.markdown(
+    "This application forecasts **Apple stock prices for the next 30 business days** "
+    "using a time-series SARIMA model."
+)
+
+st.divider()
+
+# ---------------- MODEL TRAINING ----------------
 @st.cache_resource
-def train_sarima_model():
-    # Load dataset
+def train_model():
     df = pd.read_excel("Apples_stock price dataset.xlsx")
 
-    # Convert first column to Date
     df['Date'] = pd.to_datetime(df.iloc[:, 0])
     df.set_index('Date', inplace=True)
-
-    # Sort by date (VERY IMPORTANT)
     df = df.sort_index()
-
-    # Business-day frequency
     df = df.asfreq('B')
 
-    # Explicit target column (CHANGE only if your column name differs)
     ts = df['stock_price']
-
-    # Log transform for stability
     ts_log = np.log(ts)
 
-    # SARIMA model (light + stable for cloud)
     model = SARIMAX(
         ts_log,
         order=(1, 1, 1),
-        seasonal_order=(0, 1, 1, 12),
+        seasonal_order=(1, 1, 1, 5),
         enforce_stationarity=False,
         enforce_invertibility=False
     )
@@ -45,19 +54,16 @@ def train_sarima_model():
     return fitted_model, ts
 
 
-# Button action
-if st.button("🚀 Generate 30-Day Forecast"):
+# ---------------- ACTION ----------------
+st.subheader("🚀 Generate Forecast")
+
+if st.button("Generate 30-Day Forecast"):
     with st.spinner("Training model and generating forecast..."):
-        model, ts = train_sarima_model()
+        model, ts = train_model()
 
-        # Forecast
         forecast = model.get_forecast(steps=30)
-        forecast_log = forecast.predicted_mean
+        forecast_values = np.exp(forecast.predicted_mean)
 
-        # Convert back from log scale
-        forecast_values = np.exp(forecast_log)
-
-        # Future business dates
         future_dates = pd.bdate_range(
             start=ts.index[-1],
             periods=30
@@ -68,16 +74,36 @@ if st.button("🚀 Generate 30-Day Forecast"):
             "Predicted Stock Price": forecast_values.values
         })
 
-        # Output table
-        st.subheader("📊 Forecast Output")
-        st.dataframe(forecast_df)
+        st.success("Forecast generated successfully!")
 
-        # Plot
-        st.subheader("📈 Forecast Visualization")
+        # ---------------- OUTPUT TABLE ----------------
+        st.subheader("📊 Forecast Table")
+        st.dataframe(
+            forecast_df.style.format(
+                {"Predicted Stock Price": "{:.2f}"}
+            ),
+            use_container_width=True
+        )
+
+        # ---------------- PLOT ----------------
+        st.subheader("📈 Forecast Trend")
+
         plt.figure(figsize=(10, 4))
-        plt.plot(forecast_df["Date"], forecast_df["Predicted Stock Price"], marker='o')
+        plt.plot(
+            forecast_df["Date"],
+            forecast_df["Predicted Stock Price"],
+            marker="o",
+            linewidth=2
+        )
         plt.xlabel("Date")
-        plt.ylabel("Stock Price")
-        plt.xticks(rotation=45)
+        plt.ylabel("Predicted Stock Price")
         plt.grid(True)
+        plt.xticks(rotation=45)
         st.pyplot(plt)
+
+        # ---------------- NOTE ----------------
+        st.info(
+            "ℹ️ Stock prices are influenced by many unpredictable factors. "
+            "This forecast demonstrates the modeling and deployment workflow, "
+            "not guaranteed market prediction."
+        )
