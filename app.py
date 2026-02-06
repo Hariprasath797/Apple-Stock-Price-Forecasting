@@ -1,40 +1,63 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-st.set_page_config(page_title="Apple Stock Forecast", layout="centered")
+# Page config
+st.set_page_config(page_title="Apple Stock Price Forecasting", layout="centered")
 
 st.title("🍎 Apple Stock Price Forecasting (SARIMA)")
-st.write("Generate a 30-day stock price forecast")
+st.write("30-day Apple stock price forecast using time-series modeling")
 
+# Cache model so it trains only once
 @st.cache_resource
-def train_model():
+def train_sarima_model():
+    # Load dataset
     df = pd.read_excel("Apples_stock price dataset.xlsx")
 
+    # Convert first column to Date
     df['Date'] = pd.to_datetime(df.iloc[:, 0])
     df.set_index('Date', inplace=True)
+
+    # Sort by date (VERY IMPORTANT)
+    df = df.sort_index()
+
+    # Business-day frequency
     df = df.asfreq('B')
 
-    ts = df.iloc[:, -1]
+    # Explicit target column (CHANGE only if your column name differs)
+    ts = df['stock_price']
 
+    # Log transform for stability
+    ts_log = np.log(ts)
+
+    # SARIMA model (light + stable for cloud)
     model = SARIMAX(
-        ts,
-        order=(1,1,1),
-        seasonal_order=(0,1,1,12),  # lighter than before
+        ts_log,
+        order=(1, 1, 1),
+        seasonal_order=(0, 1, 1, 12),
         enforce_stationarity=False,
         enforce_invertibility=False
     )
-    return model.fit(disp=False), ts
+
+    fitted_model = model.fit(disp=False)
+    return fitted_model, ts
 
 
+# Button action
 if st.button("🚀 Generate 30-Day Forecast"):
-    with st.spinner("Training model & generating forecast..."):
-        sarima_model, ts = train_model()
+    with st.spinner("Training model and generating forecast..."):
+        model, ts = train_sarima_model()
 
-        forecast = sarima_model.get_forecast(steps=30)
-        forecast_values = forecast.predicted_mean
+        # Forecast
+        forecast = model.get_forecast(steps=30)
+        forecast_log = forecast.predicted_mean
 
+        # Convert back from log scale
+        forecast_values = np.exp(forecast_log)
+
+        # Future business dates
         future_dates = pd.bdate_range(
             start=ts.index[-1],
             periods=30
@@ -45,11 +68,16 @@ if st.button("🚀 Generate 30-Day Forecast"):
             "Predicted Stock Price": forecast_values.values
         })
 
-        st.subheader("📊 Forecast Data")
+        # Output table
+        st.subheader("📊 Forecast Output")
         st.dataframe(forecast_df)
 
+        # Plot
         st.subheader("📈 Forecast Visualization")
-        plt.figure(figsize=(10,4))
-        plt.plot(forecast_df["Date"], forecast_df["Predicted Stock Price"])
+        plt.figure(figsize=(10, 4))
+        plt.plot(forecast_df["Date"], forecast_df["Predicted Stock Price"], marker='o')
+        plt.xlabel("Date")
+        plt.ylabel("Stock Price")
         plt.xticks(rotation=45)
+        plt.grid(True)
         st.pyplot(plt)
